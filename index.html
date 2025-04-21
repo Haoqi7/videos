@@ -1,0 +1,1063 @@
+
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频列表</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 50;
+        }
+        .modal.show {
+            display: flex;
+        }
+        .modal-content {
+            position: relative;
+            z-index: 51;
+            background: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .nav-container {
+            position: relative;
+            z-index: 40;
+        }
+        .video-platform-tag {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            color: white;
+            font-size: 12px;
+            backdrop-filter: blur(4px);
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1;
+        }
+        .platform-bilibili { border-left: 3px solid #FB7299; }
+        .platform-douyin { border-left: 3px solid #000000; }
+        .platform-youtube { border-left: 3px solid #FF0000; }
+        
+        .video-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+        .video-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        .video-card .play-button {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translate(-50%, -50%) scale(0.8);
+        }
+        .video-card:hover .play-button {
+            transform: translate(-50%, -50%) scale(1);
+            background-color: rgba(255,255,255,0.95);
+        }
+        .video-thumbnail {
+            position: relative;
+            padding-top: 56.25%; /* 16:9 宽高比 */
+            overflow: hidden;
+        }
+        .video-thumbnail img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .video-thumbnail::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(0deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0) 50%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .video-card:hover .video-thumbnail::after {
+            opacity: 1;
+        }
+        .line-clamp-1 {
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 1;
+        }
+        .line-clamp-2 {
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+        }
+        .play-button {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(255,255,255,0.9);
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .video-card:hover .play-button {
+            opacity: 1;
+        }
+        @media (max-width: 640px) {
+            .container {
+                padding-left: 0.5rem;
+                padding-right: 0.5rem;
+            }
+            .video-card {
+                font-size: 0.875rem;
+            }
+            .video-info {
+                padding: 0.5rem;
+            }
+        }
+
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr); /* 手机端默认2列 */
+            gap: 0.5rem;
+            padding: 0.5rem;
+        }
+
+        /* sm (640px) 以上保持2列 */
+        @media (min-width: 640px) {
+            .video-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 1rem;
+                padding: 1rem;
+            }
+        }
+
+        /* md (768px) 以上3列 */
+        @media (min-width: 768px) {
+            .video-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        /* lg (1024px) 以上4列 */
+        @media (min-width: 1024px) {
+            .video-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+
+        /* xl (1280px) 以上5列 */
+        @media (min-width: 1280px) {
+            .video-grid {
+                grid-template-columns: repeat(5, 1fr);
+            }
+        }
+
+        /* 添加加载动画样式 */
+        .loading-spinner {
+            display: none;
+            justify-content: center;
+            align-items: center;
+            padding: 1rem;
+        }
+        .loading-spinner.show {
+            display: flex;
+        }
+        .spinner {
+            width: 2rem;
+            height: 2rem;
+            border: 3px solid #e5e7eb;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* 骨架屏动画 */
+        @keyframes shimmer {
+            0% { background-position: -1000px 0; }
+            100% { background-position: 1000px 0; }
+        }
+
+        .skeleton {
+            animation: shimmer 2s infinite linear;
+            background: linear-gradient(to right, #f6f7f8 4%, #edeef1 25%, #f6f7f8 36%);
+            background-size: 1000px 100%;
+        }
+
+        /* 加载更多提示优化 */
+        .load-more-trigger {
+            text-align: center;
+            padding: 1rem;
+            margin-top: 1rem;
+            color: #666;
+            font-size: 0.875rem;
+        }
+
+        /* 搜索框优化 */
+        .search-container {
+            position: relative;
+        }
+
+        .search-input:focus {
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .search-icon {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9CA3AF;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- 导航栏 -->
+    <nav class="bg-white shadow-lg p-4 nav-container">
+        <div class="container mx-auto">
+            <div class="flex justify-between items-center">
+                <h1 id="mainTitle" class="text-2xl font-bold text-blue-600">无名小站</h1>
+                <div class="flex items-center gap-2 sm:gap-4 flex-1 sm:flex-none sm:w-1/2 ml-4">
+                    <input type="search" 
+                           id="searchInput"
+                           placeholder="搜索..." 
+                           class="w-full px-2 sm:px-4 py-1 sm:py-2 text-sm sm:text-base rounded-full border border-gray-300 focus:outline-none focus:border-blue-500">
+                    <button onclick="openSubmitModal()" class="p-2 sm:px-4 sm:py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 flex-shrink-0">
+                        <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                    </button>
+                    <button onclick="openSettings()" class="p-2 sm:px-4 sm:py-2 bg-gray-100 rounded-full hover:bg-gray-200 flex-shrink-0">
+                        <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 设置模态框 -->
+    <div id="settingsModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[100]">
+        <div class="bg-white rounded-lg w-full max-w-lg relative z-[101]">
+            <div class="p-4 border-b">
+                <h2 class="text-xl font-bold">设置</h2>
+            </div>
+            <div class="p-4">
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">网站标题</label>
+                    <input type="text" id="siteTitle" class="w-full px-3 py-2 border rounded" placeholder="请输入网站标题">
+                </div>
+                
+                <!-- 服务器列表 -->
+                <div class="mb-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="text-gray-700 text-sm font-bold">服务器列表</label>
+                        <button onclick="addServer()" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">添加服务器</button>
+                    </div>
+                    <div id="serverList" class="space-y-4">
+                        <!-- 服务器配置项会动态插入这里 -->
+                    </div>
+                </div>
+
+                <!-- 当前选中的服务器 -->
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">当前使用的服务器</label>
+                    <select id="currentServer" class="w-full px-3 py-2 border rounded">
+                        <option value="">请选择服务器</option>
+                    </select>
+                </div>
+            </div>
+            <div class="p-4 border-t flex justify-end space-x-2">
+                <button onclick="closeSettingsModal()" class="px-4 py-2 border rounded">取消</button>
+                <button onclick="saveSettings()" class="px-4 py-2 bg-blue-500 text-white rounded">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 提交链接弹窗 -->
+    <div id="submitModal" class="modal">
+        <div class="modal-content m-auto bg-white p-6 w-96">
+            <h2 class="text-xl font-bold mb-4">提交视频链接</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">视频链接或分享口令</label>
+                    <input type="text" id="videoUrl" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="请输入视频链接或分享口令">
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button onclick="closeSubmitModal()" class="px-4 py-2 bg-gray-100 rounded-md hover:bg-gray-200">取消</button>
+                    <button onclick="submitVideo()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">提交</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 确认提交弹窗 -->
+    <div id="confirmModal" class="modal">
+        <div class="modal-content m-auto bg-white p-6 w-96">
+            <h2 class="text-xl font-bold mb-4">检测到视频链接</h2>
+            <div class="space-y-4">
+                <p class="text-gray-600 break-all" id="clipboardContent"></p>
+                <div class="flex justify-end space-x-3">
+                    <button onclick="closeConfirmModal()" class="px-4 py-2 bg-gray-100 rounded-md hover:bg-gray-200">取消</button>
+                    <button onclick="confirmSubmit()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">提交</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主要内容 -->
+    <div class="container mx-auto py-4 sm:py-8">
+        <!-- 服务器未配置提示 -->
+        <div id="configError" class="hidden">
+            <div class="flex flex-col items-center justify-center p-8 bg-white rounded-lg shadow-sm">
+                <svg class="w-16 h-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                <h2 class="text-xl font-semibold text-gray-900 mb-2">未配置服务器</h2>
+                <p class="text-gray-600 text-center mb-4">请先配置服务器地址和Token</p>
+                <button onclick="openSettings()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                    前往设置
+                </button>
+            </div>
+        </div>
+
+        <!-- 数据为空提示 -->
+        <div id="emptyState" class="hidden">
+            <div class="flex flex-col items-center justify-center p-8 bg-white rounded-lg shadow-sm">
+                <svg class="w-16 h-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"></path>
+                </svg>
+                <h2 class="text-xl font-semibold text-gray-900 mb-2">暂无视频</h2>
+                <p class="text-gray-600 text-center">当前没有找到任何视频</p>
+            </div>
+        </div>
+
+        <!-- 骨架屏 -->
+        <div id="skeletonLoader" class="video-grid">
+            
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div class="skeleton w-full" style="padding-top: 56.25%"></div>
+                <div class="p-3 space-y-2">
+                    <div class="skeleton h-4 w-3/4 rounded"></div>
+                    <div class="skeleton h-3 w-1/2 rounded"></div>
+                    <div class="skeleton h-3 w-2/3 rounded"></div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div class="skeleton w-full" style="padding-top: 56.25%"></div>
+                <div class="p-3 space-y-2">
+                    <div class="skeleton h-4 w-3/4 rounded"></div>
+                    <div class="skeleton h-3 w-1/2 rounded"></div>
+                    <div class="skeleton h-3 w-2/3 rounded"></div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div class="skeleton w-full" style="padding-top: 56.25%"></div>
+                <div class="p-3 space-y-2">
+                    <div class="skeleton h-4 w-3/4 rounded"></div>
+                    <div class="skeleton h-3 w-1/2 rounded"></div>
+                    <div class="skeleton h-3 w-2/3 rounded"></div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div class="skeleton w-full" style="padding-top: 56.25%"></div>
+                <div class="p-3 space-y-2">
+                    <div class="skeleton h-4 w-3/4 rounded"></div>
+                    <div class="skeleton h-3 w-1/2 rounded"></div>
+                    <div class="skeleton h-3 w-2/3 rounded"></div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div class="skeleton w-full" style="padding-top: 56.25%"></div>
+                <div class="p-3 space-y-2">
+                    <div class="skeleton h-4 w-3/4 rounded"></div>
+                    <div class="skeleton h-3 w-1/2 rounded"></div>
+                    <div class="skeleton h-3 w-2/3 rounded"></div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div class="skeleton w-full" style="padding-top: 56.25%"></div>
+                <div class="p-3 space-y-2">
+                    <div class="skeleton h-4 w-3/4 rounded"></div>
+                    <div class="skeleton h-3 w-1/2 rounded"></div>
+                    <div class="skeleton h-3 w-2/3 rounded"></div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div class="skeleton w-full" style="padding-top: 56.25%"></div>
+                <div class="p-3 space-y-2">
+                    <div class="skeleton h-4 w-3/4 rounded"></div>
+                    <div class="skeleton h-3 w-1/2 rounded"></div>
+                    <div class="skeleton h-3 w-2/3 rounded"></div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div class="skeleton w-full" style="padding-top: 56.25%"></div>
+                <div class="p-3 space-y-2">
+                    <div class="skeleton h-4 w-3/4 rounded"></div>
+                    <div class="skeleton h-3 w-1/2 rounded"></div>
+                    <div class="skeleton h-3 w-2/3 rounded"></div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div class="skeleton w-full" style="padding-top: 56.25%"></div>
+                <div class="p-3 space-y-2">
+                    <div class="skeleton h-4 w-3/4 rounded"></div>
+                    <div class="skeleton h-3 w-1/2 rounded"></div>
+                    <div class="skeleton h-3 w-2/3 rounded"></div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div class="skeleton w-full" style="padding-top: 56.25%"></div>
+                <div class="p-3 space-y-2">
+                    <div class="skeleton h-4 w-3/4 rounded"></div>
+                    <div class="skeleton h-3 w-1/2 rounded"></div>
+                    <div class="skeleton h-3 w-2/3 rounded"></div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div class="skeleton w-full" style="padding-top: 56.25%"></div>
+                <div class="p-3 space-y-2">
+                    <div class="skeleton h-4 w-3/4 rounded"></div>
+                    <div class="skeleton h-3 w-1/2 rounded"></div>
+                    <div class="skeleton h-3 w-2/3 rounded"></div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div class="skeleton w-full" style="padding-top: 56.25%"></div>
+                <div class="p-3 space-y-2">
+                    <div class="skeleton h-4 w-3/4 rounded"></div>
+                    <div class="skeleton h-3 w-1/2 rounded"></div>
+                    <div class="skeleton h-3 w-2/3 rounded"></div>
+                </div>
+            </div>
+            
+        </div>
+
+        <div id="videoList" class="video-grid hidden">
+            <!-- 视频卡片将通过JavaScript动态加载 -->
+        </div>
+        
+        <!-- 加载动画优化 -->
+        <div id="loadingSpinner" class="loading-spinner">
+            <div class="spinner"></div>
+            <p class="mt-2 text-sm text-gray-600">加载中...</p>
+        </div>
+
+        <!-- 加载更多提示 -->
+        <div id="loadMoreTrigger" class="load-more-trigger hidden">
+            <p>下拉加载更多</p>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        let pageSize = 12;  // 默认页大小
+        let searchTimeout;
+        let totalPages = 1;
+        let isLoading = false;
+        let hasMore = true;
+        let currentClipboardContent = '';
+
+        // 服务器配置相关函数
+        let servers = [];
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            adjustPageSize();
+            window.addEventListener('resize', debounce(adjustPageSize, 250));
+            loadSettings();
+            loadVideos();  // 恢复初始加载
+            setupSearchHandler();
+            setupScrollHandler();
+            setupClipboardListener();
+        });
+
+        // 调整页面大小
+        function adjustPageSize() {
+            const container = document.querySelector('.video-grid');
+            if (!container) return;
+
+            // 获取容器宽度和计算列数
+            const containerWidth = container.offsetWidth;
+            const gap = 16; // gap的实际值，根据tailwind的配置可能不同
+            let columns;
+
+            // 根据容器宽度计算列数，与CSS中的媒体查询breakpoints保持一致
+            if (containerWidth >= 1280) columns = 5;      // xl
+            else if (containerWidth >= 1024) columns = 4; // lg
+            else if (containerWidth >= 768) columns = 3;  // md
+            else if (containerWidth >= 640) columns = 2;  // sm
+            else columns = 2;                             // 默认
+
+            // 计算行数（考虑到一般显示器高度，默认2行）
+            const rows = Math.max(2, Math.floor((window.innerHeight - 200) / 250)); // 200是头部区域高度，250是卡片预估高度
+
+            // 计算需要加载的数量
+            const newPageSize = columns * rows;
+            
+            // 如果页面大小发生变化，重新加载
+            if (newPageSize !== pageSize) {
+                pageSize = newPageSize;
+                // 只有当已经有内容时才重新加载
+                if (document.getElementById('videoList').children.length > 0) {
+                    currentPage = 1;
+                    loadVideos();
+                }
+            }
+        }
+
+        // 防抖函数
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // 加载设置
+        function loadSettings() {
+            const siteTitle = localStorage.getItem('siteTitle') || '视频站';
+            document.getElementById('siteTitle').value = siteTitle;
+            document.getElementById('mainTitle').textContent = siteTitle;
+            document.title = siteTitle;
+
+            // 加载服务器列表
+            servers = JSON.parse(localStorage.getItem('servers') || '[]');
+            if (servers.length === 0) {
+                // 如果没有服务器配置,将原来的配置转换为新格式
+                const oldServerUrl = localStorage.getItem('serverUrl');
+                const oldApiToken = localStorage.getItem('apiToken');
+                if (oldServerUrl && oldApiToken) {
+                    servers.push({
+                        name: '默认服务器',
+                        url: oldServerUrl,
+                        token: oldApiToken
+                    });
+                }
+            }
+
+            // 加载当前选中的服务器
+            const currentServerId = localStorage.getItem('currentServerId') || '0';
+            
+            // 更新界面
+            updateServerList();
+            updateCurrentServerSelect();
+            
+            // 设置当前服务器
+            document.getElementById('currentServer').value = currentServerId;
+        }
+
+        // 添加新服务器
+        function addServer() {
+            servers.push({
+                name: `服务器 ${servers.length + 1}`,
+                url: '',
+                token: ''
+            });
+            updateServerList();
+            updateCurrentServerSelect();
+        }
+
+        // 删除服务器
+        function deleteServer(index) {
+            servers.splice(index, 1);
+            updateServerList();
+            updateCurrentServerSelect();
+        }
+
+        // 更新服务器列表显示
+        function updateServerList() {
+            const serverList = document.getElementById('serverList');
+            serverList.innerHTML = servers.map((server, index) => `
+                <div class="p-4 border rounded">
+                    <div class="flex justify-between items-center mb-2">
+                        <input type="text" 
+                               class="border-none font-bold" 
+                               value="${server.name}"
+                               onchange="updateServerName(${index}, this.value)"
+                               placeholder="服务器名称">
+                        <button onclick="deleteServer(${index})" 
+                                class="text-red-500 hover:text-red-700">
+                            删除
+                        </button>
+                    </div>
+                    <div class="space-y-2">
+                        <input type="text" 
+                               class="w-full px-3 py-2 border rounded" 
+                               value="${server.url}"
+                               onchange="updateServerUrl(${index}, this.value)"
+                               placeholder="服务器地址">
+                        <input type="text" 
+                               class="w-full px-3 py-2 border rounded" 
+                               value="${server.token}"
+                               onchange="updateServerToken(${index}, this.value)"
+                               placeholder="API Token">
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 更新当前服务器选择下拉框
+        function updateCurrentServerSelect() {
+            const select = document.getElementById('currentServer');
+            select.innerHTML = `
+                <option value="">请选择服务器</option>
+                ${servers.map((server, index) => `
+                    <option value="${index}">${server.name}</option>
+                `).join('')}
+            `;
+        }
+
+        // 更新服务器名称
+        function updateServerName(index, name) {
+            servers[index].name = name;
+        }
+
+        // 更新服务器地址
+        function updateServerUrl(index, url) {
+            servers[index].url = url;
+        }
+
+        // 更新服务器Token
+        function updateServerToken(index, token) {
+            servers[index].token = token;
+        }
+
+        // 保存设置
+        function saveSettings() {
+            const siteTitle = document.getElementById('siteTitle').value || '视频站';
+            const currentServerId = document.getElementById('currentServer').value;
+
+            // 保存网站标题
+            localStorage.setItem('siteTitle', siteTitle);
+            document.getElementById('mainTitle').textContent = siteTitle;
+            document.title = siteTitle;
+
+            // 保存服务器配置
+            localStorage.setItem('servers', JSON.stringify(servers));
+            localStorage.setItem('currentServerId', currentServerId);
+
+            // 如果选择了服务器,同时更新当前使用的服务器地址和token
+            if (currentServerId !== '') {
+                const currentServer = servers[currentServerId];
+                localStorage.setItem('serverUrl', currentServer.url);
+                localStorage.setItem('apiToken', currentServer.token);
+            }
+
+            closeSettingsModal();
+            // 刷新视频列表
+            loadVideos();
+        }
+
+        // 设置滚动处理
+        function setupScrollHandler() {
+            window.addEventListener('scroll', () => {
+                if (isLoading || !hasMore) return;
+                
+                const scrollHeight = document.documentElement.scrollHeight;
+                const scrollTop = window.scrollY || document.documentElement.scrollTop;
+                const clientHeight = window.innerHeight || document.documentElement.clientHeight;
+                
+                // 当距离底部100px时加载更多
+                if (scrollHeight - scrollTop - clientHeight < 100) {
+                    loadMore();
+                }
+            });
+        }
+
+        // 设置搜索处理
+        function setupSearchHandler() {
+            const searchInput = document.getElementById('searchInput');
+            searchInput.addEventListener('input', () => {
+                clearTimeout(searchTimeout);
+                document.getElementById('skeletonLoader').classList.remove('hidden');
+                document.getElementById('videoList').classList.add('hidden');
+                
+                searchTimeout = setTimeout(() => {
+                    currentPage = 1;
+                    hasMore = true;
+                    loadVideos();
+                }, 500);
+            });
+        }
+
+        // 加载更多视频
+        async function loadMore() {
+            if (currentPage < totalPages) {
+                currentPage++;
+                await loadVideos(true);
+            }
+        }
+
+        // 显示/隐藏加载动画
+        function showLoading(show) {
+            const spinner = document.getElementById('loadingSpinner');
+            if (show) {
+                spinner.classList.add('show');
+            } else {
+                spinner.classList.remove('show');
+            }
+            isLoading = show;
+        }
+
+        // 加载视频列表
+        async function loadVideos(append = false) {
+            if (isLoading) return;
+            
+            const serverConfig = getServerConfig();
+            if (!serverConfig) return;
+
+            isLoading = true;
+            showLoading(true);
+
+            try {
+                const response = await axios.post('/api/videos', {
+                    serverUrl: serverConfig.url,
+                    token: serverConfig.token,
+                    pageNo: currentPage,
+                    pageSize: pageSize,
+                    searchQuery: searchInput.value
+                });
+
+                if (response.data.resCode === '000001') {
+                    const { content, totalPages: total } = response.data.record;
+                    totalPages = total;
+                    hasMore = currentPage < total;
+
+                    if (!content || content.length === 0) {
+                        if (!append) {
+                            document.getElementById('emptyState').classList.remove('hidden');
+                            document.getElementById('videoList').classList.add('hidden');
+                            document.getElementById('skeletonLoader').classList.add('hidden');
+                        }
+                        return;
+                    }
+
+                    document.getElementById('emptyState').classList.add('hidden');
+                    document.getElementById('skeletonLoader').classList.add('hidden');
+                    document.getElementById('videoList').classList.remove('hidden');
+                    
+                    if (append) {
+                        appendVideos(content);
+                    } else {
+                        renderVideos(content);
+                    }
+
+                    // 显示加载更多提示
+                    document.getElementById('loadMoreTrigger').classList.toggle('hidden', !hasMore);
+                } else {
+                    throw new Error(response.data.message);
+                }
+            } catch (error) {
+                console.error('加载视频失败:', error);
+                showMessage(error.response?.data?.message || '加载视频失败');
+            } finally {
+                isLoading = false;
+                showLoading(false);
+            }
+        }
+
+        // 渲染视频列表
+        function renderVideos(videos) {
+            const videoList = document.getElementById('videoList');
+            videoList.innerHTML = generateVideoCards(videos);
+        }
+
+        // 追加视频列表
+        function appendVideos(videos) {
+            const videoList = document.getElementById('videoList');
+            videoList.insertAdjacentHTML('beforeend', generateVideoCards(videos));
+        }
+
+        // 生成视频卡片HTML
+        function generateVideoCards(videos) {
+            return videos.map(video => {
+                // 将视频数据转换为 JSON 字符串并进行 URL 编码
+                const videoData = encodeURIComponent(JSON.stringify(video));
+                return `
+                <div class="video-card bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-lg">
+                    <a onclick="setPlayVideo(this)" class="block cursor-pointer" data-video="${videoData}">
+                        <div class="video-thumbnail">
+                            <img src="${addTokenToUrl(video.videocover)}" alt="${video.videoname}" loading="lazy">
+                            <div class="video-platform-tag ${getPlatformClass(video.videoplatform)}">${video.videoplatform}</div>
+                            <div class="play-button">
+                                <svg class="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="video-info p-2 sm:p-3">
+                            <h3 class="text-sm sm:text-base font-medium text-gray-900 line-clamp-2 mb-1" title="${video.videoname}">${video.videoname}</h3>
+                            <div class="flex items-center text-xs text-gray-500 mb-1 sm:mb-2">
+                                <span class="flex items-center">
+                                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>
+                                    </svg>
+                                    ${video.videoplatform}
+                                </span>
+                                <span class="mx-1 sm:mx-2">•</span>
+                                <span class="flex items-center">
+                                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/>
+                                    </svg>
+                                    ${formatDate(video.createtime)}
+                                </span>
+                            </div>
+                            <p class="text-xs text-gray-500 line-clamp-1" title="${video.videodesc || '暂无描述'}">${video.videodesc || '暂无描述'}</p>
+                        </div>
+                    </a>
+                </div>
+            `;
+            }).join('');
+        }
+
+        // 获取平台标签样式
+        function getPlatformClass(platform) {
+            const platformMap = {
+                '哔哩': 'platform-bilibili',
+                '抖音': 'platform-douyin',
+                'youtube': 'platform-youtube'
+            };
+            return platformMap[platform] || '';
+        }
+
+        // 格式化日期
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        }
+
+        // 添加token到URL
+        function addTokenToUrl(url) {
+            const serverConfig = getServerConfig();
+            if (!url || !serverConfig) return url;
+            
+            // 如果是相对路径，添加服务器地址
+            const fullUrl = url.startsWith('/') ? `${serverConfig.url}${url}` : url;
+            return `${fullUrl}?apptoken=${serverConfig.token}`;
+        }
+
+        // 打开设置弹窗
+        function openSettings() {
+            document.getElementById('settingsModal').classList.remove('hidden');
+        }
+
+        // 关闭设置弹窗
+        function closeSettingsModal() {
+            document.getElementById('settingsModal').classList.add('hidden');
+        }
+
+        // 显示消息提示
+        function showMessage(message, isError = true) {
+            // 创建消息元素
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `fixed top-4 right-4 px-4 py-2 rounded-lg text-white ${isError ? 'bg-red-500' : 'bg-green-500'} shadow-lg z-50`;
+            messageDiv.textContent = message;
+            
+            // 添加到页面
+            document.body.appendChild(messageDiv);
+            
+            // 3秒后自动移除
+            setTimeout(() => {
+                messageDiv.remove();
+            }, 3000);
+
+            // 如果是错误消息，同时显示配置错误界面
+            if (isError) {
+                document.getElementById('configError').classList.remove('hidden');
+                document.getElementById('videoList').classList.add('hidden');
+                document.getElementById('skeletonLoader').classList.add('hidden');
+            }
+        }
+
+        // 修改获取服务器配置的方式
+        function getServerConfig() {
+            const currentServerId = localStorage.getItem('currentServerId');
+            if (!currentServerId || !servers[currentServerId]) {
+                showMessage('请先在设置中选择服务器');
+                return null;
+            }
+            return servers[currentServerId];
+        }
+
+        // 设置剪切板监听
+        function setupClipboardListener() {
+            document.addEventListener('paste', async (e) => {
+                // 如果当前有弹窗打开，不处理剪切板事件
+                if (document.querySelector('.modal.show')) return;
+                
+                const clipText = (e.clipboardData || window.clipboardData).getData('text');
+                if (!clipText) return;
+                
+                // 只检查是否包含http://或https://
+                const isLink = /^https?:\/\//.test(clipText.trim());
+                
+                if (isLink && clipText !== currentClipboardContent) {
+                    currentClipboardContent = clipText;
+                    showConfirmModal(clipText);
+                }
+            });
+
+            // 监听页面获得焦点事件
+            window.addEventListener('focus', async () => {
+                try {
+                    // 如果当前有弹窗打开，不读取剪切板
+                    if (document.querySelector('.modal.show')) return;
+                    
+                    const clipText = await navigator.clipboard.readText();
+                    if (!clipText || clipText === currentClipboardContent) return;
+                    
+                    // 只检查是否包含http://或https://
+                    const isLink = /^https?:\/\//.test(clipText.trim());
+                    
+                    if (isLink) {
+                        currentClipboardContent = clipText;
+                        showConfirmModal(clipText);
+                    }
+                } catch (err) {
+                    console.error('读取剪切板失败:', err);
+                }
+            });
+        }
+
+        // 显示确认弹窗
+        function showConfirmModal(content) {
+            document.getElementById('clipboardContent').textContent = content;
+            document.getElementById('confirmModal').classList.add('show');
+        }
+
+        // 关闭确认弹窗
+        function closeConfirmModal() {
+            document.getElementById('confirmModal').classList.remove('show');
+        }
+
+        // 确认提交
+        function confirmSubmit() {
+            const content = document.getElementById('clipboardContent').textContent;
+            document.getElementById('videoUrl').value = content;
+            closeConfirmModal();
+            openSubmitModal();
+        }
+
+        // 打开提交弹窗
+        function openSubmitModal() {
+            document.getElementById('submitModal').classList.add('show');
+            document.getElementById('videoUrl').value = '';
+        }
+
+        // 关闭提交弹窗
+        function closeSubmitModal() {
+            document.getElementById('submitModal').classList.remove('show');
+        }
+
+        // 提交视频
+        async function submitVideo() {
+            try {
+                const serverConfig = getServerConfig();
+                if (!serverConfig) {
+                    alert('请先选择服务器');
+                    return;
+                }
+
+                const videoUrl = document.getElementById('videoUrl').value.trim();
+                if (!videoUrl) {
+                    alert('请输入视频链接或分享口令');
+                    return;
+                }
+
+                const response = await axios.post('/api/submit', {
+                    serverUrl: serverConfig.url,
+                    token: serverConfig.token,
+                    videoUrl
+                });
+
+                if (response.data.resCode === '000001') {
+                    alert('提交成功');
+                    closeSubmitModal();
+                    // 重新加载视频列表
+                    currentPage = 1;
+                    loadVideos();
+                } else {
+                    throw new Error(response.data.message);
+                }
+            } catch (error) {
+                console.error('提交视频失败:', error);
+                alert('提交视频失败: ' + (error.response?.data?.message || error.message));
+            }
+        }
+
+        // 使用 Intersection Observer 优化无限滚动
+        const observer = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting && !isLoading && hasMore) {
+                loadMore();
+            }
+        }, {
+            rootMargin: '100px'
+        });
+
+        // 设置观察者
+        document.addEventListener('DOMContentLoaded', () => {
+            const trigger = document.getElementById('loadMoreTrigger');
+            if (trigger) {
+                observer.observe(trigger);
+            }
+        });
+
+        // 设置要播放的视频
+        function setPlayVideo(element) {
+            try {
+                const encodedData = element.dataset.video;
+                const decodedData = decodeURIComponent(encodedData);
+                localStorage.setItem('playVideo', decodedData);
+                window.location.href = '/play';
+            } catch (error) {
+                console.error('Error setting video data:', error);
+            }
+            return false;
+        }
+    </script>
+</body>
+</html> 
