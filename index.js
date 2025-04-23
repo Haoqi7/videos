@@ -7,7 +7,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // 设置JWT密钥
-const JWT_SECRET = process.env.JWT_SECRET || 'keyboard cat'; // 请替换为您的密钥
+const JWT_SECRET = process.env.JWT_SECRET || 'your_secret_key';
 const TOKEN_EXPIRES_IN = '1d'; // token有效期7天
 
 // 功能配置
@@ -34,7 +34,7 @@ app.get('/', (req, res) => {
 // 代理视频列表请求
 app.post('/api/videos', async (req, res) => {
   try {
-    const { serverUrl, token, pageNo, pageSize, searchQuery } = req.body;
+    const { serverUrl, token, pageNo, pageSize, searchQuery, platform } = req.body;
 
     // 创建请求参数
     const formData = new URLSearchParams();
@@ -44,6 +44,10 @@ app.post('/api/videos', async (req, res) => {
     if (searchQuery) {
       formData.append('videodesc', searchQuery);
       formData.append('videoname', searchQuery);
+    }
+
+    if (platform) {
+      formData.append('videoplatform', platform);
     }
 
     // 发起请求到实际的API服务器
